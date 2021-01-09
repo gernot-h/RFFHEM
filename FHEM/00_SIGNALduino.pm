@@ -5160,7 +5160,8 @@ USB-connected devices (SIGNALduino):<br>
         "strict": "0",
         "warnings": "0",
         "Time::HiRes": "0",
-        "JSON": "0"
+        "JSON": "0",
+        "Digest::CRC": "0"
       },
       "recommends": {
         "Data::Dumper": "0"
