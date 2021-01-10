@@ -1,6 +1,6 @@
-# $Id: 00_SIGNALduino.pm v3.5.1 2020-07-02 21:20:33Z Sidey $
+# $Id: 00_SIGNALduino.pm v3.5.2 2021-01-09 21:20:33Z Sidey $
 #
-# v3.5.1 - https://github.com/RFD-FHEM/RFFHEM/tree/master
+# v3.5.2 - https://github.com/RFD-FHEM/RFFHEM/tree/master
 # The module is inspired by the FHEMduino project and modified in serval ways for processing the incoming messages
 # see http://www.fhemwiki.de/wiki/SIGNALDuino
 # It was modified also to provide support for raw message handling which can be send from the SIGNALduino
@@ -9,27 +9,28 @@
 #
 # 2014-2015  S.Butzek, N.Butzek
 # 2016-2019  S.Butzek, Ralf9
-# 2019-2020  S.Butzek, HomeAutoUser, elektron-bbs
+# 2019-2021  S.Butzek, HomeAutoUser, elektron-bbs
 
 
 package main;
 use strict;
 use warnings;
-#use version 0.77; our $VERSION = version->declare('v3.5.1');
+#use version 0.77; our $VERSION = version->declare('v3.5.2');
 
 my $missingModulSIGNALduino = '';
+my %useErrors;
 
 use DevIo;
 use Carp;
 no warnings 'portable';
 
 eval {use Data::Dumper qw(Dumper);1};
-eval {use Digest::CRC;1 or $missingModulSIGNALduino .= 'Digest::CRC '};
-eval {use JSON;1 or $missingModulSIGNALduino .= 'JSON '};
+# eval 'use Digest::CRC;1' or $missingModulSIGNALduino .= q[Digest::CRC ];
+eval 'use JSON;1' or $missingModulSIGNALduino .= q[JSON ];
 
 eval {use Scalar::Util qw(looks_like_number);1};
 eval {use Time::HiRes qw(gettimeofday);1} ;
-use lib::SD_Protocols;
+eval 'use lib::SD_Protocols;1' or $useErrors{'lib::SD_Protocols'}{'errors'} = $@ and $missingModulSIGNALduino .= q[lib::SD_Protocols ];
 
 #$| = 1;    #Puffern abschalten, Hilfreich fuer PEARL WARNINGS Search
 
@@ -37,7 +38,7 @@ use lib::SD_Protocols;
 
 
 use constant {
-  SDUINO_VERSION                  => '3.5.1',
+  SDUINO_VERSION                  => '3.5.2+09012021',
   SDUINO_INIT_WAIT_XQ             => 1.5,     # wait disable device
   SDUINO_INIT_WAIT                => 2,
   SDUINO_INIT_MAXRETRY            => 3,
@@ -401,19 +402,35 @@ sub SIGNALduino_Define {
   $hash->{DeviceName} = $dev;
   $hash->{logMethod}  = \&main::Log3;
 
-  my $ret=undef;
-  my $Protocols = new lib::SD_Protocols();
-  $Protocols->registerLogCallback(SIGNALduino_createLogCallback($hash));
-  my $error = $Protocols->LoadHash(qq[$attr{global}{modpath}/FHEM/lib/SD_ProtocolData.pm]);
-  $hash->{protocolObject} = $Protocols;
+   my $ret;
+   my $error;
+   $missingModulSIGNALduino 
+      ? Log3 (undef, 2, qq[$name: modules with error: $missingModulSIGNALduino]) 
+      : Log3 (undef, 4, qq[$name: all needed modules loaded]);
+   
 
-  InternalTimer(gettimeofday(), \&SIGNALduino_IdList,"sduino_IdList:$name",0);        # verzoegern bis alle Attribute eingelesen sind
+  if (!exists $useErrors{'lib::SD_Protocols'}{'errors'} ) 
+  { 
+    my $Protocols = new lib::SD_Protocols();
+    $Protocols->registerLogCallback(SIGNALduino_createLogCallback($hash));
+    $error = $Protocols->LoadHash(qq[$attr{global}{modpath}/FHEM/lib/SD_ProtocolData.pm]);
+    $hash->{protocolObject} = $Protocols;
 
-  if($dev ne 'none') {
-    $ret = DevIo_OpenDev($hash, 0, \&SIGNALduino_DoInit, \&SIGNALduino_Connect);
+    InternalTimer(gettimeofday(), \&SIGNALduino_IdList,"sduino_IdList:$name",0);        # verzoegern bis alle Attribute eingelesen sind
+
+    if($dev ne 'none') {
+      $ret = DevIo_OpenDev($hash, 0, \&SIGNALduino_DoInit, \&SIGNALduino_Connect);
+    } else {
+    $hash->{DevState} = 'initialized';
+      readingsSingleUpdate($hash, 'state', 'opened', 1);
+    }
+    $hash->{versionProtocols} = $hash->{protocolObject}->getProtocolVersion();
   } else {
-  $hash->{DevState} = 'initialized';
-    readingsSingleUpdate($hash, 'state', 'opened', 1);
+    if ( $useErrors{'lib::SD_Protocols'}{'errors'} =~ m/(.*) at \(eval .*/ )
+    {
+      $hash->{DevState} = qq[error, $missingModulSIGNALduino could not be loaded \n $1];
+    }
+    $error = $useErrors{'lib::SD_Protocols'}{'errors'} . qq[ to be able to load module $missingModulSIGNALduino and get operational mode];
   }
 
   $hash->{DMSG}             = 'nothing';
@@ -421,10 +438,9 @@ sub SIGNALduino_Define {
   $hash->{LASTDMSGID}       = 'nothing';
   $hash->{TIME}             = time();
   $hash->{versionmodul}     = SDUINO_VERSION;
-  $hash->{versionProtocols} = $hash->{protocolObject}->getProtocolVersion();
 
   if (defined($error)  ) {
-    Log3 'SIGNALduino', 1, qq[Error loading Protocol Hash. Module is in inoperable mode error message:($error)];
+    Log3 undef, 1, qq[$name: Error loading Protocol Hash. Module is in inoperable mode. Error messages:($error)];
     return ;
   }
 
@@ -5160,8 +5176,7 @@ USB-connected devices (SIGNALduino):<br>
         "strict": "0",
         "warnings": "0",
         "Time::HiRes": "0",
-        "JSON": "0",
-        "Digest::CRC": "0"
+        "JSON": "0"
       },
       "recommends": {
         "Data::Dumper": "0"
@@ -5208,7 +5223,7 @@ USB-connected devices (SIGNALduino):<br>
         "type": "git",
         "url": "https://github.com/RFD-FHEM/RFFHEM.git",
         "web": "https://github.com/RFD-FHEM/RFFHEM/tree/master",
-        "x_branch": "dev-r34",
+        "x_branch": "master",
         "x_filepath": "FHEM/",
         "x_raw": "https://raw.githubusercontent.com/RFD-FHEM/RFFHEM/master/FHEM/00_SIGNALduino.pm"
       }
@@ -5230,7 +5245,7 @@ USB-connected devices (SIGNALduino):<br>
       "web": "https://wiki.fhem.de/wiki/SIGNALduino"
     }
   },
-  "version": "v3.5.1"
+  "version": "v3.5.2"
 }
 =end :application/json;q=META.json
 =cut

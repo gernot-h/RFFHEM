@@ -12,7 +12,7 @@ package lib::SD_Protocols;
 use strict;
 use warnings;
 use Carp qw(croak carp);
-use Digest::CRC;
+eval 'use Digest::CRC;1' or croak "You need to install the Digest::CRC module";
 our $VERSION = '2.02';
 use Storable qw(dclone);
 use Scalar::Util qw(blessed);
@@ -1392,7 +1392,7 @@ sub postDemo_WS2000 {
       $self->_logging(qq[lib/postDemo_WS2000, Sensortyp $typ Adr $adr - ERROR check XOR],4);
     return (0, undef);
   } else {
-    if ($datalength < 45 || $datalength > 46) {                  # Summe pruefen, auﬂer Typ 1 ohne Summe
+    if ($datalength < 45 || $datalength > 46) {                  # Summe pruefen, auÔøΩer Typ 1 ohne Summe
       $data = oct( "0b".(join '', reverse @bit_msg[$dataindex .. $dataindex + 3]));
       if ($data != ($sum & 0x0F)) {
           $self->_logging(qq[lib/postDemo_WS2000, Sensortyp $typ Adr $adr - ERROR sum],4);
