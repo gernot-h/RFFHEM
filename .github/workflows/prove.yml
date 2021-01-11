@@ -11,7 +11,7 @@ jobs:
     name: Perl ${{ matrix.perl }} on ${{ matrix.os }}
     steps:
     - uses: actions/checkout@master
-    - uses: shogo82148/actions-setup-perl@v1
+    - uses: shogo82148/actions-setup-perl@v1.9.2
       with:
         perl-version: ${{ matrix.perl }}
     - run: |
@@ -20,7 +20,7 @@ jobs:
         cpanm Storable
     - name: install fhem via deb package
       run: |
-        curl -L https://debian.fhem.de/archive.key | sudo apt-key add -
+        wget -vO - https://debian.fhem.de/archive.key | sudo apt-key add -
         echo "deb https://debian.fhem.de/nightly/ /" | sudo tee -a /etc/apt/sources.list
         sudo apt-get update -qq
         sudo apt-get install fhem -y
